@@ -1,1 +1,2 @@
 # ToDoList
+A simple to do list. As a training app for pass Data between ViewControllers. Now there is some bugs: my imagePicker controller don't work correctly. Error Domain=PlugInKit Code=13 "query cancelled" UserInfo={NSLocalizedDescription=query cancelled} - this error is permanently throws. Alredy tried to: handle 'Privacy... ' to plist, dismsss the picker, dismiss self, dismiss both, add @objc, use didFinishPickingImageWithInfo. Other functionality is work fine for now 
