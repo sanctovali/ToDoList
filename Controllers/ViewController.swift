@@ -7,10 +7,14 @@
 //
 
 import UIKit
+import CoreData
 
 class ViewController: UIViewController {
 	
-	var tasks = [Task]()
+	var fetchResultController: NSFetchedResultsController<Task> = NSFetchedResultsController()
+	//let coreDataStack = CoreDataStack.shared
+	
+	var tasks =  [Task]()
 	//MARK: Outlets
 	@IBOutlet weak var tasksTableView: UITableView!
 	
@@ -18,23 +22,30 @@ class ViewController: UIViewController {
 		super.viewDidLoad()
 		tasksTableView.dataSource = self
 		tasksTableView.delegate = self
-
-		makeTasks()
+		fetchResultController.delegate = self
 		sortTasks()
 		tasksTableView.rowHeight = 70
 	}
+	override func viewWillAppear(_ animated: Bool) {
+		loadData()
+	}
 	
-	//MARK: Primary setup
-	func makeTasks() {
-		let first = Task(title: "Very important thing", description: """
--To do
--To do
--To do, to do, to do, to do,
-to dooooo, dododododo
-""", image: UIImage(named: "pink-panter"))
-		let second = Task(title: "Create app", description: "Create tableView app using MVC", image: nil)
-			tasks.append(first)
-			tasks.append(second)
+	func loadData() {
+		let fetchRequest: NSFetchRequest<Task> = Task.fetchRequest()
+		let sortCompleteDescriptor = NSSortDescriptor(key: "isComplete", ascending: true)
+		let sortNameDescriptor = NSSortDescriptor(key: "title", ascending: true)
+		fetchRequest.sortDescriptors = [sortCompleteDescriptor, sortNameDescriptor]
+		
+		if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
+			fetchResultController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: context, sectionNameKeyPath: nil, cacheName: nil)
+			
+			do {
+				try fetchResultController.performFetch()
+				tasks = fetchResultController.fetchedObjects!
+			} catch let error as NSError {
+				print("There is an error while loading data ", error.localizedDescription)
+			}
+		}
 	}
 	
 	func sortTasks() {
@@ -49,15 +60,24 @@ to dooooo, dododododo
 	
 	//MARK: Actions
 	func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath) -> [UITableViewRowAction]? {
+		
 		let complete = UITableViewRowAction(style: .default, title: "Done") { (action, indexPath) in
-			self.tasks[indexPath.row].completeTask()
+			self.tasks[indexPath.row].isComplete = true
 			self.sortTasks()
-			//self.tasksTableView.reloadSections([0], with: .fade)
 		}
 		
 		let delete = UITableViewRowAction(style: .default, title: "Delete") { (action, indexPath) in
 			self.tasks.remove(at: indexPath.row)
 			self.tasksTableView.deleteRows(at: [indexPath], with: .bottom)
+			if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
+				let taskToDelete = self.fetchResultController.object(at: indexPath)
+				context.delete(taskToDelete)
+				do {
+					try context.save()
+				} catch {
+					print("There is an error while updating data ", error.localizedDescription)
+				}
+			}
 		}
 		complete.backgroundColor = #colorLiteral(red: 0.5843137503, green: 0.8235294223, blue: 0.4196078479, alpha: 1)
 		if tasks[indexPath.row].isComplete {
@@ -65,44 +85,49 @@ to dooooo, dododododo
 		} else { return [delete, complete] }
 	}
 	
-	//MARK: Navigation
+	//MARK: - Navigation
 	override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+		guard let dvc = segue.destination as? DetailVC else { return }
 		if segue.identifier == "ShowDetail" {
 			if let indexPath = tasksTableView.indexPathForSelectedRow {
-				let dvc = segue.destination as! DetailVC
 				dvc.task = tasks[indexPath.row]
-				tasksTableView.deselectRow(at: indexPath, animated: true)
 			}
 		} else if segue.identifier == "addTask" {
-			let dvc = segue.destination as! DetailVC
-			dvc.isNewTask = true
 			dvc.mode = .edit
 		}
 	}
 	
 	@IBAction func unwindToViewController(for unwindSegue: UIStoryboardSegue) {
-		print(#function)
-		let svc = unwindSegue.source as! DetailVC
-		for (index, task) in tasks.enumerated() {
-			print(task.title, svc.task.title)
-			if task == svc.task {
-				tasks[index] = svc.task
+		
+		guard let svc = unwindSegue.source as? DetailVC else { return }
+		print("backtoViewController")
+		if let path = tasksTableView.indexPathForSelectedRow {
+			tasks[path.row] = svc.task
+			if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
+				//let taskToDelete = self.fetchResultController.object(at: path)
+				//context.save() //(taskToDelete)
+				do {
+					try context.save()
+				} catch {
+					print("There is an error while updating data ", error.localizedDescription)
+				}
 			}
-		}
-		if svc.isNewTask {
-				print("add task")
-				tasks.append(svc.task)
+			tasksTableView.deselectRow(at: path, animated: true)
+		} else {
+			tasks.append(svc.task)
 		}
 		sortTasks()
 	}
 	
 	@IBAction func unwindToViewControllerWithCancel(for unwindSegue: UIStoryboardSegue) {
-		print(#function)
+		if let path = tasksTableView.indexPathForSelectedRow {
+			tasksTableView.deselectRow(at: path, animated: true)
+		}
 	}
 	
 }
 
-//MARK: Extensions
+// MARK: - Extensions
 extension ViewController: UITableViewDataSource, UITableViewDelegate {
 	func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
 		return tasks.count
@@ -111,14 +136,39 @@ extension ViewController: UITableViewDataSource, UITableViewDelegate {
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tasksTableView.dequeueReusableCell(withIdentifier: "TaskCell") as! TaskCell
 		if tasks[indexPath.row].isComplete {
-			cell.titleLabel.attributedText = tasks[indexPath.row].title.strikeThrough()
+			cell.titleLabel.attributedText = tasks[indexPath.row].title!.strikeThrough()
 		} else {
 			cell.titleLabel.text = tasks[indexPath.row].title
 		}
-		
-		cell.taskImageView.image = tasks[indexPath.row].image ?? nil
+		cell.taskImageView.image = UIImage(data: tasks[indexPath.row].image!)
 		return cell
 	}
+}
+
+extension ViewController: NSFetchedResultsControllerDelegate {
+	func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+	}
+	
+	func controller(_ controller: NSFetchedResultsController<NSFetchRequestResult>, didChange anObject: Any, at indexPath: IndexPath?, for type: NSFetchedResultsChangeType, newIndexPath: IndexPath?) {
+		switch type {
+		case .insert:
+			guard let indexPath = newIndexPath else { break }
+			tasksTableView.insertRows(at: [indexPath], with: .fade)
+		case .delete:
+			guard let indexPath = newIndexPath else { break }
+			tasksTableView.deleteRows(at: [indexPath], with: .right)
+		case .update:
+			guard let indexPath = newIndexPath else { break }
+			tasksTableView.reloadRows(at: [indexPath], with: .middle)
+		default:
+			tasksTableView.reloadData()
+		}
+		tasks = controller.fetchedObjects as! [Task]
+	}
+	
+	func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+	}
+	
 }
 
 extension String {

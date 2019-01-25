@@ -8,13 +8,15 @@
 
 import UIKit
 
-
 class DetailVC: UIViewController {
+	
+	
 	
 	enum Mode {
 		case edit
 		case read
 	}
+	
 	
 	//MARK: Outlets
 	@IBOutlet weak var titletextField: UITextField!
@@ -23,31 +25,70 @@ class DetailVC: UIViewController {
 	@IBOutlet weak var descriptionLable: UILabel!
 	@IBOutlet weak var editDescription: UITextView!
 	@IBOutlet weak var doneButton: UIButton!
-
-	var isNewTask = false
+	@IBOutlet weak var scrollView: UIScrollView!
+	
 	var isSaved = false
 	
-	var mode: Mode = .read
-	
+	var mode: Mode = .read	
 	var task: Task!
+	
+	let imagePicker = UIImagePickerController()
 	
 	override func viewDidLoad() {
         super.viewDidLoad()
+		let hideKbGesture = UITapGestureRecognizer(target: self, action: #selector(hideKb))
+		scrollView?.addGestureRecognizer(hideKbGesture)
     }
 	
 	override func viewWillAppear(_ animated: Bool) {
+		registerNotifications()
 		setMode(to: mode)
 		imageButton.imageView?.clipsToBounds = true
 		editDescription.layer.borderWidth = 1
 		editDescription.layer.cornerRadius = 5
 		editDescription.layer.masksToBounds = true
 	}
-	
 	override func viewWillDisappear(_ animated: Bool) {
 		if isSaved {
-			performSegue(withIdentifier: "backtoViewController", sender: true)
+			performSegue(withIdentifier: "backtoViewController", sender: nil)
+		} else {
+			performSegue(withIdentifier: "cancelSegue", sender: nil)
 		}
+		removeNotifications()
 	}
+	
+	//клава вверх
+	@objc func kbWillShow(notification: Notification) {
+		let userInfo = notification.userInfo! as NSDictionary
+		let kbSize = (userInfo.value(forKey: UIResponder.keyboardFrameEndUserInfoKey) as! NSValue).cgRectValue.size
+		let contentInsets = UIEdgeInsets.init(top: 0.0, left: 0.0, bottom: kbSize.height, right: 0.0)
+		
+		self.scrollView?.contentInset = contentInsets
+		scrollView?.scrollIndicatorInsets = contentInsets
+	}
+	//клава внииз
+	@objc func kbwillHide(notification: Notification) {
+		let contentInsets = UIEdgeInsets.zero
+		scrollView?.contentInset = contentInsets
+		scrollView?.scrollIndicatorInsets = contentInsets
+	}
+	
+	//прячем клаву по тапу на скролвью
+	@objc func hideKb() {
+		self.scrollView.endEditing(true)
+	}
+	
+	//подписываемся на уведомления
+	func registerNotifications() {
+		NotificationCenter.default.addObserver(self, selector: #selector(self.kbWillShow(notification:)), name: UIResponder.keyboardWillShowNotification, object: nil)
+		NotificationCenter.default.addObserver(self, selector: #selector(self.kbwillHide(notification:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+	}
+	//отписываемся от уведомлений
+	func removeNotifications() {
+		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
+		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+	}
+	
 	
 	//MARK: UI setup
 	func setDonebutton() {
@@ -64,11 +105,26 @@ class DetailVC: UIViewController {
 		}
 	}
 	
+	func saveData() {
+		if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
+			task = Task(context: context)
+			task.title = titletextField.text
+			task.taskDescription = editDescription.text
+			task.image = (imageButton.imageView?.image)!.pngData()
+			do {
+				try context.save()
+				print("saved")
+			} catch let error as NSError {
+				print("There is an error while saving data. \(error.localizedDescription)")
+			}
+		}
+	}
+	
 	func setMode(to mode: Mode) {
 		switch mode {
 		case .read:
 			presentTask()
-			
+			guard task.isComplete == false else { return }
 			let editButton = UIButton.createMyButton(title: "Edit")
 			editButton.addTarget(self, action: #selector(editAction), for: .touchUpInside)
 			let edit = UIBarButtonItem(customView: editButton)
@@ -95,10 +151,10 @@ class DetailVC: UIViewController {
 		descriptionLable.isHidden = true
 		titleLable.isHidden = true
 		doneButton.isHidden = true
-		//setDonebutton()
 		
 		//enabled in edit mode
 		imageButton.isEnabled = true
+		imageButton.backgroundColor = #colorLiteral(red: 0.2753281891, green: 0.2753281891, blue: 0.2753281891, alpha: 1)
 		titletextField.isHidden = false
 		editDescription.isHidden = false
 		
@@ -107,7 +163,6 @@ class DetailVC: UIViewController {
 		editDescription.text = descriptionLable.text
 	}
 
-	
 	func presentTask() {
 		//enabled in read mode
 		navigationItem.hidesBackButton = false
@@ -117,27 +172,22 @@ class DetailVC: UIViewController {
 		
 		//disabled in read mode
 		imageButton.isEnabled = false
+		imageButton.backgroundColor = #colorLiteral(red: 0.3321701288, green: 0.3321786821, blue: 0.3321741223, alpha: 1)
 		titletextField.isHidden = true
 		editDescription.isHidden = true
 		
 		//set values
-		titleLable.text = task.title
-		imageButton.setImage(task.image ?? nil, for: [])
-		descriptionLable.text = task.description ?? nil
+		titleLable.text = task.title!
+		imageButton.setImage(UIImage(data: task.image!), for: [])
+		descriptionLable.text = task.taskDescription
 	}
 	
 	//MAKR: Actions
 	
-	@objc func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-		let image = info[UIImagePickerController.InfoKey.editedImage] as? UIImage
-		imageButton.setImage(image, for: [])
-		dismiss(animated: true, completion: nil)
-	}
-	
 	@IBAction func doneButtonPressed(_ sender: Any) {
 		let ac = UIAlertController(title: "Finish task?", message: nil, preferredStyle: .alert)
 		let yesAction = UIAlertAction(title: "it's done", style: .default) { (action) in
-			self.task.completeTask()
+			self.task.isComplete = true
 			self.isSaved = true
 			self.setDonebutton()
 		}
@@ -149,7 +199,8 @@ class DetailVC: UIViewController {
 	}
 	
 	@objc func editAction() {
-		setMode(to: .edit)
+			setMode(to: .edit)
+		
 	}
 
 	@objc func cancelAction() {
@@ -167,27 +218,25 @@ class DetailVC: UIViewController {
 		if task != nil {
 			task.title = newTitle
 			titleLable.text = task.title
-			task.description = editDescription.text
-			descriptionLable.text = task.description
-			task.image = imageButton.imageView?.image
+			task.taskDescription = editDescription.text
+			descriptionLable.text = task.taskDescription
+			task.image = (imageButton.imageView?.image)!.pngData()
 		} else {
-			task = Task(title: newTitle, description: editDescription.text, image: imageButton.imageView?.image)
-			print(task.title)
-			
+			saveData()
 		}
 		isSaved = true
 		setMode(to: .read)
 	}
 	
 	@IBAction func imageButtonPressed(_ sender: Any) {
-		
-		let ac = UIAlertController(title: "Image source", message: nil, preferredStyle: .actionSheet)
-		let camera = UIAlertAction(title: "Take a photo", style: .default) { (action) in
+		imagePicker.delegate = self
+		let ac = UIAlertController(title: "Choose image source", message: nil, preferredStyle: .actionSheet)
+		let camera = UIAlertAction(title: "Take a photo", style: .default, handler: { (action) in
 			self.imagePickerSource(source: .camera)
-		}
-		let library = UIAlertAction(title: "Choose an image", style: .default) { (action) in
+		})
+		let library = UIAlertAction(title: "Choose an image", style: .default, handler: { (action) in
 			self.imagePickerSource(source: .photoLibrary)
-		}
+		})
 		let cancel = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
 		
 		ac.addAction(camera)
@@ -199,10 +248,15 @@ class DetailVC: UIViewController {
 }
 //MARK: Extensions
 extension DetailVC: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+	func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+		if let image = info[UIImagePickerController.InfoKey.editedImage] as? UIImage {
+			imageButton.setImage(image, for: [])
+		}
+		imagePicker.dismiss(animated: true, completion: nil)
+	}
+	
 	func imagePickerSource(source: UIImagePickerController.SourceType) {
 		if UIImagePickerController.isSourceTypeAvailable(source) {
-			let imagePicker = UIImagePickerController()
-			imagePicker.delegate = self
 			imagePicker.allowsEditing = true
 			imagePicker.sourceType = source
 			self.present(imagePicker, animated: true, completion:  nil)

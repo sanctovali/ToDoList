@@ -14,3 +14,4 @@ func showAlert(text: String,  on viewController: UIViewController) {
 	ac.addAction(alertAction)
 	viewController.present(ac, animated: true, completion: nil)
 }
+

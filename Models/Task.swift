@@ -5,18 +5,15 @@
 //  Created by Valentin Kiselev on 23/01/2019.
 //  Copyright © 2019 Valentin Kiselev. All rights reserved.
 //
-
+/*
 import UIKit
 
 struct Task {
 	
-	//private(set) static var tasks = [Task]()
-	private static var counter: UInt = 0
 	
 	var title: String
 	var description: String?
 	var image: UIImage?
-	private let id: UInt
 	private(set) var isComplete: Bool = false
 	
 	init(title: String, description: String?, image: UIImage?) {
@@ -27,8 +24,6 @@ struct Task {
 		} else {
 			self.image = UIImage(named: "defaultImage")
 		}
-		Task.counter += 1
-		self.id = Task.counter
 	}
 	
 //	mutating func addTask() {
@@ -56,15 +51,27 @@ struct Task {
 //			}
 //		}
 //	}
-	
+
 	mutating func completeTask() {
 		self.isComplete = true
 	}
-}
-
-extension Task: Equatable {
-	static func == (lhs: Task, rhs: Task) -> Bool {
-		return (lhs.id == rhs.id)
+	
+	static var tasks: [Task] {
+		let tasks = [Task(title: "Very important thing", description: """
+-To do
+-To do
+-To do, to do, to do, to do,
+to dooooo, dododododo
+""", image: UIImage(named: "pink-panter")),
+					 Task(title: "Create app", description:
+						"Create tableView app using MVC", image: nil)]
+		return tasks
 	}
 }
+**/
 
+extension Task {
+	func completeTask() {
+		self.isComplete = true
+	}
+}
