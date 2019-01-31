@@ -5,55 +5,67 @@
 //  Created by Valentin Kiselev on 23/01/2019.
 //  Copyright © 2019 Valentin Kiselev. All rights reserved.
 //
-/*
+
 import UIKit
+import Firebase
+import FirebaseDatabase
+import FirebaseStorage
+
 
 struct Task {
 	
-	
 	var title: String
-	var description: String?
-	var image: UIImage?
+	var taskDescription: String?
+	var imageURL: String?
+	private var image: UIImage?
+	private(set) var ref:  DatabaseReference!
 	private(set) var isComplete: Bool = false
 	
-	init(title: String, description: String?, image: UIImage?) {
+	init(title: String, description: String? = nil, image: UIImage? = nil) {
 		self.title = title
-		self.description = description
-		if let image = image {
-			self.image = image
-		} else {
-			self.image = UIImage(named: "defaultImage")
-		}
+		self.taskDescription = description
+		self.image = image
+		self.ref = nil
 	}
 	
-//	mutating func addTask() {
-//		Task.tasks.append(self)
-//	}
-//	//removes first task with specific title and description
-//	mutating func removeTask() {
-//		for (index, task) in Task.tasks.enumerated() {
-//			if self.title == task.title && self.description == task.description {
-//				Task.tasks.remove(at: index)
-//				break //
-//			}
-//		}
-//	}
+	init(snapshot: DataSnapshot) {
+		let snapshotValue = snapshot.value as! [String: AnyObject]
+		title = snapshotValue["title"] as! String
+		taskDescription = snapshotValue["taskDescription"] as? String
+		isComplete = snapshotValue["isComplete"] as! Bool
+		imageURL = snapshotValue["imageURL"] as? String
+		ref = snapshot.ref
+	}
 	
-//	static func sort(firstIncompleted: Bool) {
-//		for (index, task) in Task.tasks.enumerated() {
-//			if task.isComplete {
-//				let completedTask = Task.tasks.remove(at: index)
-//				if firstIncompleted {
-//					Task.tasks.append(completedTask)
-//				} else {
-//					Task.tasks.insert(completedTask, at: 0)
-//				}
-//			}
-//		}
-//	}
+	func convertToDictionary() -> Any {
 
+		return ["title": title, "taskDescription": taskDescription ?? "", "isComplete": isComplete]//, "image": imageData as Any ]
+	}
+	
 	mutating func completeTask() {
 		self.isComplete = true
+		self.selfSaveData()
+	}
+	mutating func selfSaveData() {
+		ref = Database.database().reference(withPath: "tasks")
+		ref.keepSynced(true)
+		let taskRef = ref.child(self.title.lowercased())
+		taskRef.setValue(self.convertToDictionary())
+		if let image = image {
+			guard let imageData = image.pngData() else {
+				print("cant make data")
+				return
+			}
+			let storageRef = Storage.storage().reference()
+			let imageRef = storageRef.child("tasks/\(self.description)\(self.getImageName()).png" )
+			let uploadTask = imageRef.putData(imageData, metadata: nil)
+			uploadTask.resume()
+		}
+		print(#function)
+	}
+	private func getImageName() -> String {
+		//later will implement method for images array
+		return "01"
 	}
 	
 	static var tasks: [Task] {
@@ -68,10 +80,11 @@ to dooooo, dododododo
 		return tasks
 	}
 }
-**/
 
-extension Task {
-	func completeTask() {
-		self.isComplete = true
+extension Task: CustomStringConvertible {
+	var description: String {
+		return self.title
 	}
+	
+	
 }

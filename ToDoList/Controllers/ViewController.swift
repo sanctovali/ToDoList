@@ -7,12 +7,12 @@
 //
 
 import UIKit
-import CoreData
+import FirebaseDatabase
+import FirebaseStorage
 
 class ViewController: UIViewController {
 	
-	var fetchResultController: NSFetchedResultsController<Task> = NSFetchedResultsController()
-	//let coreDataStack = CoreDataStack.shared
+	var ref: DatabaseReference!
 	
 	var tasks =  [Task]()
 	//MARK: Outlets
@@ -20,9 +20,10 @@ class ViewController: UIViewController {
 	
 	override func viewDidLoad() {
 		super.viewDidLoad()
+		ref = Database.database().reference(withPath: "tasks")
+		ref.keepSynced(true)
 		tasksTableView.dataSource = self
 		tasksTableView.delegate = self
-		fetchResultController.delegate = self
 		sortTasks()
 		tasksTableView.rowHeight = 70
 	}
@@ -31,20 +32,28 @@ class ViewController: UIViewController {
 	}
 	
 	func loadData() {
-		let fetchRequest: NSFetchRequest<Task> = Task.fetchRequest()
-		let sortCompleteDescriptor = NSSortDescriptor(key: "isComplete", ascending: true)
-		let sortNameDescriptor = NSSortDescriptor(key: "title", ascending: true)
-		fetchRequest.sortDescriptors = [sortCompleteDescriptor, sortNameDescriptor]
-		
-		if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
-			fetchResultController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: context, sectionNameKeyPath: nil, cacheName: nil)
-			
-			do {
-				try fetchResultController.performFetch()
-				tasks = fetchResultController.fetchedObjects!
-			} catch let error as NSError {
-				print("There is an error while loading data ", error.localizedDescription)
+		ref.observe(.value) { [weak self] (snapsot) in
+			let storageRef = Storage.storage().reference()
+			var tasks_ = Array<Task>()
+			for item in snapsot.children {
+				var task = Task(snapshot: item as! DataSnapshot)
+				let imageRef = storageRef.child("tasks/12301.png")
+				imageRef.getData(maxSize: 1 * 1024 * 1024, completion: { (data, error) in
+					guard error != nil else {
+						return
+					}
+					guard let data = data else {
+						print("no data")
+						return
+					}
+					task.image = UIImage(data: data)
+				})
+				tasks_.insert(task, at: 0)
 			}
+			self?.tasks = tasks_
+			self?.tasksTableView.reloadData()
+
+			print(#function)
 		}
 	}
 	
@@ -61,23 +70,15 @@ class ViewController: UIViewController {
 	//MARK: Actions
 	func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath) -> [UITableViewRowAction]? {
 		
-		let complete = UITableViewRowAction(style: .default, title: "Done") { (action, indexPath) in
-			self.tasks[indexPath.row].isComplete = true
-			self.sortTasks()
+		let complete = UITableViewRowAction(style: .default, title: "Done") { [weak self] (action, indexPath) in
+			self?.tasks[indexPath.row].completeTask()
+			self?.sortTasks()
 		}
 		
-		let delete = UITableViewRowAction(style: .default, title: "Delete") { (action, indexPath) in
-			self.tasks.remove(at: indexPath.row)
-			self.tasksTableView.deleteRows(at: [indexPath], with: .bottom)
-			if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
-				let taskToDelete = self.fetchResultController.object(at: indexPath)
-				context.delete(taskToDelete)
-				do {
-					try context.save()
-				} catch {
-					print("There is an error while updating data ", error.localizedDescription)
-				}
-			}
+		let delete = UITableViewRowAction(style: .default, title: "Delete") { [weak self] (action, indexPath) in
+			let task = self?.tasks[indexPath.row]
+			task?.ref?.removeValue()
+
 		}
 		complete.backgroundColor = #colorLiteral(red: 0.5843137503, green: 0.8235294223, blue: 0.4196078479, alpha: 1)
 		if tasks[indexPath.row].isComplete {
@@ -103,15 +104,6 @@ class ViewController: UIViewController {
 		print("backtoViewController")
 		if let path = tasksTableView.indexPathForSelectedRow {
 			tasks[path.row] = svc.task
-			if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
-				//let taskToDelete = self.fetchResultController.object(at: path)
-				//context.save() //(taskToDelete)
-				do {
-					try context.save()
-				} catch {
-					print("There is an error while updating data ", error.localizedDescription)
-				}
-			}
 			tasksTableView.deselectRow(at: path, animated: true)
 		} else {
 			tasks.append(svc.task)
@@ -136,39 +128,13 @@ extension ViewController: UITableViewDataSource, UITableViewDelegate {
 	func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
 		let cell = tasksTableView.dequeueReusableCell(withIdentifier: "TaskCell") as! TaskCell
 		if tasks[indexPath.row].isComplete {
-			cell.titleLabel.attributedText = tasks[indexPath.row].title!.strikeThrough()
+			cell.titleLabel.attributedText = tasks[indexPath.row].title.strikeThrough()
 		} else {
 			cell.titleLabel.text = tasks[indexPath.row].title
 		}
-		cell.taskImageView.image = UIImage(data: tasks[indexPath.row].image!)
+		cell.taskImageView.image = tasks[indexPath.row].image
 		return cell
 	}
-}
-
-extension ViewController: NSFetchedResultsControllerDelegate {
-	func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
-	}
-	
-	func controller(_ controller: NSFetchedResultsController<NSFetchRequestResult>, didChange anObject: Any, at indexPath: IndexPath?, for type: NSFetchedResultsChangeType, newIndexPath: IndexPath?) {
-		switch type {
-		case .insert:
-			guard let indexPath = newIndexPath else { break }
-			tasksTableView.insertRows(at: [indexPath], with: .fade)
-		case .delete:
-			guard let indexPath = newIndexPath else { break }
-			tasksTableView.deleteRows(at: [indexPath], with: .right)
-		case .update:
-			guard let indexPath = newIndexPath else { break }
-			tasksTableView.reloadRows(at: [indexPath], with: .middle)
-		default:
-			tasksTableView.reloadData()
-		}
-		tasks = controller.fetchedObjects as! [Task]
-	}
-	
-	func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
-	}
-	
 }
 
 extension String {

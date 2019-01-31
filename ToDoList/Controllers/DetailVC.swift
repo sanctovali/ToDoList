@@ -10,13 +10,10 @@ import UIKit
 
 class DetailVC: UIViewController {
 	
-	
-	
 	enum Mode {
 		case edit
 		case read
 	}
-	
 	
 	//MARK: Outlets
 	@IBOutlet weak var titletextField: UITextField!
@@ -38,8 +35,8 @@ class DetailVC: UIViewController {
         super.viewDidLoad()
 		let hideKbGesture = UITapGestureRecognizer(target: self, action: #selector(hideKb))
 		scrollView?.addGestureRecognizer(hideKbGesture)
+		
     }
-	
 	override func viewWillAppear(_ animated: Bool) {
 		registerNotifications()
 		setMode(to: mode)
@@ -89,7 +86,6 @@ class DetailVC: UIViewController {
 		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
 	}
 	
-	
 	//MARK: UI setup
 	func setDonebutton() {
 		doneButton.isHidden = false
@@ -102,21 +98,6 @@ class DetailVC: UIViewController {
 		} else {
 			doneButton.backgroundColor = #colorLiteral(red: 0.5843137503, green: 0.8235294223, blue: 0.4196078479, alpha: 1)
 			doneButton.setTitle("Finish task", for: [])
-		}
-	}
-	
-	func saveData() {
-		if let context = (UIApplication.shared.delegate as? AppDelegate)?.coreDataStack.persistentContainer.viewContext {
-			task = Task(context: context)
-			task.title = titletextField.text
-			task.taskDescription = editDescription.text
-			task.image = (imageButton.imageView?.image)!.pngData()
-			do {
-				try context.save()
-				print("saved")
-			} catch let error as NSError {
-				print("There is an error while saving data. \(error.localizedDescription)")
-			}
 		}
 	}
 	
@@ -177,30 +158,23 @@ class DetailVC: UIViewController {
 		editDescription.isHidden = true
 		
 		//set values
-		titleLable.text = task.title!
-		imageButton.setImage(UIImage(data: task.image!), for: [])
+		titleLable.text = task.title
+		imageButton.setImage(task.image, for: [])
 		descriptionLable.text = task.taskDescription
 	}
 	
 	//MAKR: Actions
 	
 	@IBAction func doneButtonPressed(_ sender: Any) {
-		let ac = UIAlertController(title: "Finish task?", message: nil, preferredStyle: .alert)
-		let yesAction = UIAlertAction(title: "it's done", style: .default) { (action) in
-			self.task.isComplete = true
-			self.isSaved = true
-			self.setDonebutton()
+		AlertManager.showChoiceAlert(title: "Finish task?", on: self) { [weak self] (action) in
+			self?.task.completeTask()
+			self?.isSaved = true
+			self?.setDonebutton()
 		}
-		let noAction = UIAlertAction(title: "oh, wait", style: .cancel, handler: nil)
-		ac.addAction(noAction)
-		ac.addAction(yesAction)
-		ac.preferredAction = yesAction
-		self.present(ac, animated: true, completion: nil)
 	}
 	
 	@objc func editAction() {
 			setMode(to: .edit)
-		
 	}
 
 	@objc func cancelAction() {
@@ -213,16 +187,17 @@ class DetailVC: UIViewController {
 	
 	@objc func saveAction() {
 		
-		guard titletextField.text?.count != 0 else { showAlert(text: "Title can't be empty", on: self); return }
+		guard titletextField.text?.count != 0 else { AlertManager.showWarningAlert(text: "Title can't be empty", on: self); return }
 		let newTitle = titletextField.text ?? ""
 		if task != nil {
 			task.title = newTitle
 			titleLable.text = task.title
 			task.taskDescription = editDescription.text
 			descriptionLable.text = task.taskDescription
-			task.image = (imageButton.imageView?.image)!.pngData()
+			task.image = imageButton.imageView?.image
 		} else {
-			saveData()
+			task = Task(title: newTitle, description: editDescription.text, image: imageButton.imageView?.image)
+			task.selfSaveData()
 		}
 		isSaved = true
 		setMode(to: .read)
@@ -231,11 +206,11 @@ class DetailVC: UIViewController {
 	@IBAction func imageButtonPressed(_ sender: Any) {
 		imagePicker.delegate = self
 		let ac = UIAlertController(title: "Choose image source", message: nil, preferredStyle: .actionSheet)
-		let camera = UIAlertAction(title: "Take a photo", style: .default, handler: { (action) in
-			self.imagePickerSource(source: .camera)
+		let camera = UIAlertAction(title: "Take a photo", style: .default, handler: { [weak self] (action) in
+			self?.imagePickerSource(source: .camera)
 		})
-		let library = UIAlertAction(title: "Choose an image", style: .default, handler: { (action) in
-			self.imagePickerSource(source: .photoLibrary)
+		let library = UIAlertAction(title: "Choose an image", style: .default, handler: { [weak self] (action) in
+			self?.imagePickerSource(source: .photoLibrary)
 		})
 		let cancel = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
 		
@@ -252,7 +227,9 @@ extension DetailVC: UIImagePickerControllerDelegate, UINavigationControllerDeleg
 		if let image = info[UIImagePickerController.InfoKey.editedImage] as? UIImage {
 			imageButton.setImage(image, for: [])
 		}
-		imagePicker.dismiss(animated: true, completion: nil)
+		defer {
+			imagePicker.dismiss(animated: true, completion: nil)
+		}
 	}
 	
 	func imagePickerSource(source: UIImagePickerController.SourceType) {
